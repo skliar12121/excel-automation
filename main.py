@@ -45,6 +45,7 @@ def parse_price(value):
 def process_files():
     products = {}
     errors = []
+    conflicted_articles = set()
 
     for file_path in sorted(INPUT_DIR.glob("*.xlsx")):
         if file_path.name.startswith("~$"):
@@ -100,11 +101,42 @@ def process_files():
                     ])
                     continue
 
-                if article not in products or price < products[article]["price"]:
+ 
+                
+                # Спорные артикулы больше не добавляем в результат
+                if article in conflicted_articles:
+                    continue
+
+                if article in products:
+                    existing_name = products[article]["name"]
+
+                    if existing_name.casefold() != name.casefold():
+                        errors.append([
+                            file_path.name,
+                            row_number,
+                            article,
+                            f"Конфликт названий: '{existing_name}' и '{name}'"
+                        ])
+
+                        # Исключаем товар из результата
+                        del products[article]
+
+                        # Запоминаем артикул как конфликтующий
+                        conflicted_articles.add(article)
+                        continue
+
+                    if price < products[article]["price"]:
+                        products[article] = {
+                            "name": name,
+                            "price": price
+                        }
+                else:
                     products[article] = {
                         "name": name,
-                        "price": price,
+                        "price": price
                     }
+
+
 
         finally:
             wb.close()

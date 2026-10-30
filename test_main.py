@@ -88,3 +88,58 @@ def test_corrupted_excel_file(tmp_path, monkeypatch):
     assert len(errors) == 1
     assert errors[0][0] == "broken.xlsx"
     assert "Не удалось открыть файл" in errors[0][3]
+
+def test_conflicting_product_names(tmp_path, monkeypatch):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Артикул", "Название", "Цена"])
+    ws.append(["A101", "Мышь Logitech", 1500])
+    ws.append(["A101", "Клавиатура Defender", 900])
+    wb.save(input_dir / "supplier.xlsx")
+
+    monkeypatch.setattr(main, "INPUT_DIR", input_dir)
+    
+
+    products, errors = main.process_files()
+
+    assert any(
+        "Конфликт названий" in error[3]
+        for error in errors
+    )
+
+    assert "A101" not in products
+
+
+def test_conflict_across_three_files(tmp_path, monkeypatch):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+
+    suppliers = [
+        ("supplier_1.xlsx", "Мышь Logitech", 1500),
+        ("supplier_2.xlsx", "Клавиатура Defender", 900),
+        ("supplier_3.xlsx", "Мышь Logitech", 1400),
+    ]
+
+    for filename, name, price in suppliers:
+        wb = Workbook()
+        ws = wb.active
+
+        ws.append(["Артикул", "Название", "Цена"])
+        ws.append(["A101", name, price])
+
+        wb.save(input_dir / filename)
+        wb.close()
+
+    monkeypatch.setattr(main, "INPUT_DIR", input_dir)
+
+    products, errors = main.process_files()
+
+    assert "A101" not in products
+
+    assert any(
+        "Конфликт названий" in error[3]
+        for error in errors
+    )
