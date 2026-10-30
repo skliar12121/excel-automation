@@ -42,10 +42,11 @@ def parse_price(value):
         return None
 
 
-def process_files():
+def process_files(include_records=False):
     products = {}
     errors = []
     conflicted_articles = set()
+    source_records = {}
 
     for file_path in sorted(INPUT_DIR.glob("*.xlsx")):
         if file_path.name.startswith("~$"):
@@ -103,6 +104,18 @@ def process_files():
 
  
                 
+                # Сохраняем исходную запись поставщика
+                if article not in source_records:
+                    source_records[article] = []
+
+                source_records[article].append([
+                    file_path.name,
+                    row_number,
+                    article,
+                    name,
+                    price
+                ])
+
                 # Спорные артикулы больше не добавляем в результат
                 if article in conflicted_articles:
                     continue
@@ -140,11 +153,14 @@ def process_files():
 
         finally:
             wb.close()
+    if include_records:
+        return products, errors, source_records, conflicted_articles
 
     return products, errors
 
 
-def save_result(products, errors):
+
+def save_result(products, errors, source_records=None, conflicted_articles=None):
     OUTPUT_DIR.mkdir(exist_ok=True)
 
     wb = Workbook()
@@ -164,6 +180,28 @@ def save_result(products, errors):
 
     for error in errors:
         ws_errors.append(error)
+        
+    # Создаём лист с конфликтующими товарами
+    ws_conflicts = wb.create_sheet("Конфликты")
+    ws_conflicts.append([
+        "Файл",
+        "Строка",
+        "Артикул",
+        "Название",
+        "Цена"
+    ])
+
+    if source_records is not None and conflicted_articles is not None:
+        for article in sorted(conflicted_articles):
+            for record in source_records.get(article, []):
+                ws_conflicts.append([
+                    record[0],
+                    record[1],
+                    record[2],
+                    record[3],
+                    float(record[4])
+                ])
+
 
     result_path = OUTPUT_DIR / "result.xlsx"
     wb.save(result_path)
@@ -173,6 +211,11 @@ def save_result(products, errors):
     print(f"Результат: {result_path}")
 
 
+
 if __name__ == "__main__":
-    products, errors = process_files()
-    save_result(products, errors)
+    products, errors, records, conflicts = process_files(
+        include_records=True
+    )
+
+    save_result(products, errors, records, conflicts)
+

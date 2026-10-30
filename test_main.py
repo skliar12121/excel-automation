@@ -143,3 +143,76 @@ def test_conflict_across_three_files(tmp_path, monkeypatch):
         "Конфликт названий" in error[3]
         for error in errors
     )
+
+def test_conflict_records_for_report(tmp_path, monkeypatch):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+
+    names = [
+        "Мышь Logitech",
+        "Клавиатура Defender",
+        "Мышь Logitech"
+    ]
+
+    for number, name in enumerate(names, start=1):
+        wb = Workbook()
+        ws = wb.active
+        ws.append(["Артикул", "Название", "Цена"])
+        ws.append(["A101", name, 1000 + number * 100])
+        wb.save(input_dir / f"supplier_{number}.xlsx")
+        wb.close()
+
+    monkeypatch.setattr(main, "INPUT_DIR", input_dir)
+
+    products, errors, records, conflicts = main.process_files(
+        include_records=True
+    )
+
+    assert "A101" not in products
+    assert "A101" in conflicts
+    assert len(records["A101"]) == 3
+
+    assert records["A101"][0][3] == "Мышь Logitech"
+    assert records["A101"][1][3] == "Клавиатура Defender"
+    assert records["A101"][2][3] == "Мышь Logitech"
+
+def test_conflicts_excel_sheet(tmp_path, monkeypatch):
+    input_dir = tmp_path / "input"
+    output_dir = tmp_path / "output"
+    input_dir.mkdir()
+
+    names = [
+        "Мышь Logitech",
+        "Клавиатура Defender",
+        "Мышь Logitech"
+    ]
+
+    for number, name in enumerate(names, start=1):
+        wb = Workbook()
+        ws = wb.active
+        ws.append(["Артикул", "Название", "Цена"])
+        ws.append(["A101", name, 1000 + number * 100])
+        wb.save(input_dir / f"supplier_{number}.xlsx")
+        wb.close()
+
+    monkeypatch.setattr(main, "INPUT_DIR", input_dir)
+    monkeypatch.setattr(main, "OUTPUT_DIR", output_dir)
+
+    products, errors, records, conflicts = main.process_files(
+        include_records=True
+    )
+
+    main.save_result(products, errors, records, conflicts)
+
+    result = load_workbook(output_dir / "result.xlsx")
+    try:
+        assert "Конфликты" in result.sheetnames
+
+        rows = list(result["Конфликты"].values)
+
+        assert len(rows) == 4  # Заголовок + 3 записи
+        assert rows[1][2] == "A101"
+        assert rows[2][3] == "Клавиатура Defender"
+        assert rows[3][3] == "Мышь Logitech"
+    finally:
+        result.close()
